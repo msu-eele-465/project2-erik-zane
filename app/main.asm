@@ -20,15 +20,15 @@ StopWDT     mov.w   #WDTPW+WDTHOLD,&WDTCTL  ; Stop WDT
 ; (port and pin numbers are placeholders pins not typically enabled for I2C module use)
 ; setting pins as output:
 ; bis.w   #LOCKLPM5,&PM5CTL0 
-; bis.b   #0b00001100, &P1DIR
-; bis.b   #0b00001100, &P1OUT  (passively high)
+; bis.b   #00001100b, &P1DIR  ; choose 3.2 as clock and 3.3 as data
+; bis.b   #00001100b, &P1OUT  (passively high)
 ; bic.w   #LOCKLPM5,&PM5CTL0 
 
-setting pins as input:
+;setting pins as input:
 ; bis.w   #LOCKLPM5,&PM5CTL0 
-; bic.b   #0b00001100, &P3DIR
-; bis.b   #0b00001100, &P3REN
-; bic.b   #0b00001100, &P1OUT  (pull down resistors, for now)
+; bic.b   #00001100b, &P3DIR
+; bis.b   #00001100b, &P3REN
+; bic.b   #00001100b, &P1OUT  (pull down resistors, for now)
 ; bic.w   #LOCKLPM5,&PM5CTL0 
 
 
@@ -48,33 +48,45 @@ init_heartbeat:
 
 init: 
             ; switches
-            bic.b   #0b001000, &P2DIR ; switch 2
-            bis.b   #0b001000, &P2REN
-            bic.b   #0b001000, &P2OUT  (pull down resistors, for now)
+            bic.b   #001000b, &P2DIR ; switch 2
+            bis.b   #001000b, &P2REN
+            bic.b   #001000b, &P2OUT  ; (pull down resistors, for now)
 
 
-            bic.b   #0b000010, &P4DIR ; switch 1
-            bis.b   #0b000010, &P4REN
-            bic.b   #0b000010, &P4OUT  (pull down resistors, for now)
-            bic.b   #0b000010, &P4IES
-            bic.b   #0b000010, &P4IFG
-            bis.b   #0b000010, &P4IE
+            bic.b   #000010b, &P4DIR ; switch 1
+            bis.b   #000010b, &P4REN
+            bic.b   #000010b, &P4OUT  ; (pull down resistors, for now)
+            bic.b   #000010b, &P4IES
+            bic.b   #000010b, &P4IFG
+            bis.b   #000010b, &P4IE
 
-            bic.w   #0b00001100, &SEL0       ; re-affirm default setting
-            bic.w   #0b00001100, &SEL1       ; re-affirm default setting
+            bis.w   #TBCLR, &TB1CTL         ; clock_clock on control register TB1CTL
+            bis.w   #TBSSEL__SMCLK, &TB1CTL  ; choose SMCLK
+            bis.w   #MC__UP, &TB1CTL        ; choose UP counting
+
+            mov.w   #100, &TB1CCR0        ; count to 100 (1/10,000 second), no dividers needed
+            bis.w   #CCIE, &TB1CCTL0        ; enable interrput on TB0CCTL0
+            bic.w   #CCIFG, &TB1CCTL0       ; clear interrupt flag
+
             NOP
             bis.w   #GIE, SR                ; enable global interrupts
             NOP
 
+            ; Select I2C pins 
+            bis.b   #00001100b, &P1DIR  ; choose 3.2 as clock and 3.3 as data, outputs as default
+            bis.b   #00001100b, &P1OUT  ; (passively high)
+
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             
-            mov.w   #68, R6
+            mov.b   #68, R6     ; address of Real Time Clock (I think)
+            mov.b   #2, R11     ; default value of status register
+            ; mov.b   #0, R10      ; send_next_bit value is 0 (not necessary because status register (R11) can do it all)
 
 main:
-
-            nop 
+            NOP
+            bis.b    #BIT2, P3OUT       ; set clock pin to high
             jmp main
-            nop
+            NOP
 start:
             
 stop:
@@ -106,35 +118,53 @@ wait:
             jnz wait
 Send_data_start:
             mov.b    R6, R7
-            mov.b    #7, R9
-            ; BSL R7
+            mov.b    #3, R11
+            mov.b    #8, R9     ; send 7 bits of data
+            rla.b    R7 ; BSL R7
 Send_data:
-            ; is "send next bit" bit toggled to 1?, if no, jump to Send_data
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
+            jl  Send_data 
+            dec.b R9            ; Reduce Counter
+            jz Clear_SW1_Flag   ; if counter has reached 0, clear flag (for now)
+            rla.b    R7
+            jc  Send_1
+            jnc Send_0
             ; otherwise, BSL and change pin (3.3) value to shifted-out bit
             ; decrement bit-send counter (R9)
             ; jnz send_data
+Send_1:
+           bis.b    #BIT3, P3OUT 
+           mov.b    #3, R11      ; wait to send next bit
+           jmp Send_data
+Send_0:
+           bic.b    #BIT3, P3OUT  
+           mov.b    #3, R11      ; wait to send next bit
+           jmp Send_data
 Clear_SW1_Flag:
-             bic.b    #BIT1, P4IFG
-             reti       
-
-
+            mov.w   #2, R11     ; default value of send-data status register (we will not ever send a larger number than 68)
+            bic.b    #BIT1, P4IFG
+            reti       
 
 ; ------ end Switch1_ISR ----------
+; ---------- Clock_ISR -------- 
+ISR_Clock: 
+            cmp.b   #3, R11  ; is data being sent (is send status register (R11) empty (value greater than or equal to ~1))
+            jge     Switch_Clock; if yes, then jump to switch_clock
+        ; also check if value is less than 2-- this will symbolize some type of send operation
+Clear_Clock_Flag:
+            bic.w   #CCIFG, &TB1CCTL0  ; clear interrupt flag
+            reti                       ; return 
 
-ISR_Clock:
-        ; set clock pin to high 
-        ; is data being sent (is send register (R7) empty (0))
-        ; if no, then jump to switch_clock
-Clear_clock_flag:
-        ; clear flag
-        ; reti
-
-Switch_clock:
-        ; toggle clock output
-        ; if bit was toggled to low, toggle "send next bit" bit to 1 (jump to new subroutine to perform this operation, =>
+Switch_Clock:
+            xor.b    #BIT2, P3OUT   ; toggle clock output
+            jz Send_Next_Bit; if bit was toggled to low, toggle "send next bit" bit to 1 (jump to new subroutine to perform this operation, =>
                 ; => then jump to Clear_clock_flag)
+Send_Next_Bit:
+            mov.b    #4, R11  
+            jmp Clear_Clock_Flag
+            NOP
         ; jump to clear clock flag
-
+; ---------- end Clock_ISR -------- 
 ;------------------------------------------------------------------------------
 ;           Interrupt Vectors
 ;------------------------------------------------------------------------------
@@ -146,6 +176,9 @@ Switch_clock:
 
             .sect   ".int22"
             .short  Switch1_ISR
+
+            .sect   ".int41"
+            .short  ISR_Clock
 
 
 
