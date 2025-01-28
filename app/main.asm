@@ -55,8 +55,8 @@ init:
 
             bic.b   #000010b, &P4DIR ; switch 1
             bis.b   #000010b, &P4REN
-            bic.b   #000010b, &P4OUT  ; (pull down resistors, for now)
-            bic.b   #000010b, &P4IES
+            bis.b   #000010b, &P4OUT  ; (pull down resistors, for now)
+            bis.b   #000010b, &P4IES
             bic.b   #000010b, &P4IFG
             bis.b   #000010b, &P4IE
 
@@ -80,12 +80,15 @@ init:
             
             mov.b   #68, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
-            ; mov.b   #0, R10      ; send_next_bit value is 0 (not necessary because status register (R11) can do it all)
+            mov.b   #0, R10     ; set perform_send operation to 0
 
 main:
             NOP
             bis.b    #BIT2, P3OUT       ; set clock pin to high
-            jmp main
+            bis.b    #BIT3, P3OUT       ; set clock pin to high
+            cmp.b    #1, R10
+            jl main
+            jge Send_data
             NOP
 start:
             
@@ -111,7 +114,7 @@ ISR_HeartBeat:
 ;---------- End ISR_HeartBeat ------- 
 ; ---------- Switch1_ISR -------- 
 Switch1_ISR:
-            bic.b    #BIT2, P3OUT
+            bic.b    #BIT3, P3OUT
             mov.w    #100, R5
 wait:
             dec.w    R5
@@ -121,11 +124,16 @@ Send_data_start:
             mov.b    #3, R11
             mov.b    #8, R9     ; send 7 bits of data
             rla.b    R7 ; BSL R7
+            mov.b   #1, R10     ; set perform_send operation to 1
+            jmp Clear_SW1_Flag
+Clear_SW1_Flag:
+            bic.b    #BIT1, P4IFG
+            reti       
 Send_data:
             cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
             jl  Send_data 
             dec.b R9            ; Reduce Counter
-            jz Clear_SW1_Flag   ; if counter has reached 0, clear flag (for now)
+            jz End_address_send   ; if counter has reached 0, clear flag (for now)
             rla.b    R7
             jc  Send_1
             jnc Send_0
@@ -140,16 +148,15 @@ Send_0:
            bic.b    #BIT3, P3OUT  
            mov.b    #3, R11      ; wait to send next bit
            jmp Send_data
-Clear_SW1_Flag:
+End_address_send: 
             mov.w   #2, R11     ; default value of send-data status register (we will not ever send a larger number than 68)
-            bic.b    #BIT1, P4IFG
-            reti       
+            jmp main
 
 ; ------ end Switch1_ISR ----------
 ; ---------- Clock_ISR -------- 
 ISR_Clock: 
             cmp.b   #3, R11  ; is data being sent (is send status register (R11) empty (value greater than or equal to ~1))
-            jge     Switch_Clock; if yes, then jump to switch_clock
+            jge     Switch_Clock    ; if yes, then jump to switch_clock
         ; also check if value is less than 2-- this will symbolize some type of send operation
 Clear_Clock_Flag:
             bic.w   #CCIFG, &TB1CCTL0  ; clear interrupt flag
@@ -158,6 +165,7 @@ Clear_Clock_Flag:
 Switch_Clock:
             xor.b    #BIT2, P3OUT   ; toggle clock output
             jz Send_Next_Bit; if bit was toggled to low, toggle "send next bit" bit to 1 (jump to new subroutine to perform this operation, =>
+            jmp Clear_Clock_Flag
                 ; => then jump to Clear_clock_flag)
 Send_Next_Bit:
             mov.b    #4, R11  
