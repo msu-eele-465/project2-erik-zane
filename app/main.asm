@@ -46,19 +46,7 @@ init_heartbeat:
             bis.w   #CCIE, &TB0CCTL0        ; enable interrput on TB0CCTL0
             bic.w   #CCIFG, &TB0CCTL0       ; clear interrupt flag
 
-init: 
-            ; switches
-            bic.b   #001000b, &P2DIR ; switch 2
-            bis.b   #001000b, &P2REN
-            bic.b   #001000b, &P2OUT  ; (pull down resistors, for now)
-
-
-            bic.b   #00000010b, &P4DIR ; switch 1
-            bis.b   #00000010b, &P4REN
-            bis.b   #00000010b, &P4OUT  ; (pull down resistors, for now)
-            bis.b   #00000010b, &P4IES
-            bic.b   #00000010b, &P4IFG
-            bis.b   #00000010b, &P4IE
+init:
 
             bis.w   #TBCLR, &TB1CTL         ; clock_clock on control register TB1CTL
             bis.w   #TBSSEL__SMCLK, &TB1CTL  ; choose SMCLK
@@ -81,17 +69,32 @@ init:
             mov.b   #68, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
-            bis.b    #BIT2, P3OUT       ; set clock pin to high
-            bis.b    #BIT3, P3OUT       ; set data pin to high
+            bis.b   #00001100b, P3OUT       ; set clock and data pins to high
             NOP
 
 main:
             NOP
-            cmp.b    #1, R10
-            jl main
-            jge Send_data
-            NOP
+            ;cmp.b    #1, R10
+            ;jl main
+            ;jge Send_data
+            ;NOP
+            mov.w    #200, R5
+wait:
+            dec.w    R5
+            jnz wait           
 start:
+            bic.b    #BIT3, P3OUT
+            mov.w    #100, R5
+wait2:
+            dec.w    R5
+            jnz wait2
+Send_data_start:
+            mov.b    R6, R7
+            mov.b    #3, R11
+            mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
+            rla.b    R7 ; BSL R7
+            bis.b   #00000001b, R10     ; set perform_send operation to 1
+            jmp Send_data
             
 stop:
             
@@ -103,33 +106,7 @@ sda_delay:
 scl_delay:
 send_address:
 write:
-read:
-;------------------------------------------------------------------------------
-;           Interrupt Service routines
-;------------------------------------------------------------------------------
-;---------- ISR_HeartBeat ------- 
-ISR_HeartBeat:
-        xor.b   #BIT0, &P1OUT      ; on interrupt, toggle green led
-        bic.w   #CCIFG, &TB0CCTL0  ; clear interrupt flag
-        reti                       ; return to code location prior to interrupt commands
-;---------- End ISR_HeartBeat ------- 
-; ---------- Switch1_ISR -------- 
-Switch1_ISR:
-            bic.b    #BIT3, P3OUT
-            mov.w    #100, R5
-wait:
-            dec.w    R5
-            jnz wait
-Send_data_start:
-            mov.b    R6, R7
-            mov.b    #3, R11
-            mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
-            rla.b    R7 ; BSL R7
-            bis.b   #00000001b, R10     ; set perform_send operation to 1
-            jmp Clear_SW1_Flag
-Clear_SW1_Flag:
-            bic.b    #BIT1, P4IFG
-            reti       
+read:     
 Send_data:
             cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
             jl  Send_data 
@@ -156,7 +133,15 @@ End_address_send:
             bis.b    #BIT3, P3OUT       ; set data pin to high
             jmp main
 
-; ------ end Switch1_ISR ----------
+;------------------------------------------------------------------------------
+;           Interrupt Service routines
+;------------------------------------------------------------------------------
+;---------- ISR_HeartBeat ------- 
+ISR_HeartBeat:
+        xor.b   #BIT0, &P1OUT      ; on interrupt, toggle green led
+        bic.w   #CCIFG, &TB0CCTL0  ; clear interrupt flag
+        reti                       ; return to code location prior to interrupt commands
+;---------- End ISR_HeartBeat ------- 
 ; ---------- Clock_ISR -------- 
 ISR_Clock: 
             cmp.b   #3, R11  ; is data being sent (is send status register (R11) empty (value greater than or equal to ~1))
@@ -170,7 +155,7 @@ Clear_Clock_Flag:
 Switch_Clock:
             xor.b    #BIT2, P3OUT   ; toggle clock output
             xor.b   #00000010b, R10     ; set perform_send operation to 1
-            cmp.b   #2, R10             ; compare R10, bit 1 of 0 means r10 is low
+            cmp.b   #2, R10             ; compare R10, bit 1 of 0 means r10 is low => send next bit
             jge Send_Next_Bit; if bit was toggled to low, toggle "send next bit" bit to 1 (jump to new subroutine to perform this operation, =>
             jmp Clear_Clock_Flag
                 ; => then jump to Clear_clock_flag)
@@ -189,9 +174,6 @@ Send_Next_Bit:
             .sect   ".int43"
             .short  ISR_HeartBeat
 
-            .sect   ".int22"
-            .short  Switch1_ISR
-
             .sect   ".int41"
             .short  ISR_Clock
 
@@ -205,3 +187,16 @@ Send_Next_Bit:
 ; 5. send first bit of data (address)
 ; 6. clock moves high, then low
 ; 7. repeat steps 5-6 six more times
+
+
+;------------------------------------------------------------------------------
+;           Memory Allocation
+;------------------------------------------------------------------------------
+
+            .data
+            .retain
+; initial time
+Mins_Seconds:    .short      0011001001011000b     ; 58 seconds, 32 Minutes (might need to switch these)
+Hours:           .short      0000000000010010b     ; 12 Hours
+
+
