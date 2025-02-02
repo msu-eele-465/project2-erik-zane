@@ -88,6 +88,7 @@ start_address_send:
             mov.b    R6, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
+            rla.b    R7 ; BSL R7
             jmp wait2
 wait2:
             dec.w    R5
@@ -96,20 +97,7 @@ wait2:
 Send_data_start:
             mov.b    #3, R11
             mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
-            rla.b    R7 ; BSL R7
-            jmp Send_data
-            
-stop:
-            
-tx_ack:
-rx_ack:
-tx_byte:
-rx_byte:
-sda_delay:
-scl_delay:
-send_address:
-write:
-read:     
+            jmp Send_data 
 Send_data:
             cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
             jl  Send_data 
@@ -130,24 +118,27 @@ Send_0:
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
 End_address_send: 
-            mov.w       #2, R11     ; default value of send-data status register (we will not ever send a larger number than 68)
-            mov.w       #1, R10
-            ;bis.b      #BIT2, P3OUT       ; set clock pin to high
-            ;bis.b      #BIT0, P3OUT       ; set data pin to high
-            mov.w    #200, R5
-            cmp     #2003h, R4
-            jl wait3
+            cmp     #2004h, R4
+            jne Send_time
             mov.w   #2000h, R4
+            mov.b    #2, R9
+            jmp wait3
+End_data_send:
+            mov.w       #2, R11     ; stop send 
+            mov.w       #1, R10
             jmp main
 wait3:
-            dec.w    R5
-            jnz wait3
-            jmp Send_time
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
+            jl  wait3 
+            mov.b   #3, R11
+            dec.b R9
+            jz End_data_send
+            jmp wait3
 Send_time: 
             mov.b   @R4+, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
-            jmp wait2
+            jmp Send_data_start
 
 ;------------------------------------------------------------------------------
 ;           Interrupt Service routines
@@ -207,9 +198,9 @@ Send_Next_Bit:
             .data
             .retain
 ; initial time
-Seconds_Minutes:        .short  0011001001011000b     ; 58 seconds
-Hours:        .short  0000000000010010b     ; 32 minutes
-Blank:          .short  0000000000000000b     ; 12 Hours
+Register_Seconds:       .short  0101100000000000b     ; 58 seconds
+Minutes_Hours:          .short  0001001000110010b     ; 32 minutes
+Blank:                  .short  0000000000000000b     ; 12 Hours
 
 ; updated time
 cur_secs:       .space   2
