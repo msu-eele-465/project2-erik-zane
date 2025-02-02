@@ -70,6 +70,7 @@ init:
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
             bis.b   #00000101b, P3OUT       ; set clock and data pins to high
+            mov.w   #2000h, R4
             NOP
 
 main:
@@ -78,17 +79,21 @@ main:
             ;jge Send_data
             ;NOP
             mov.w    #200, R5
+            jmp wait
 wait:
             dec.w    R5
-            jnz wait           
-start:
+            jnz wait 
+            jmp start_address_send         
+start_address_send:
+            mov.b    R6, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
+            jmp wait2
 wait2:
             dec.w    R5
             jnz wait2
+            jmp Send_data_start
 Send_data_start:
-            mov.b    R6, R7
             mov.b    #3, R11
             mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
             rla.b    R7 ; BSL R7
@@ -129,7 +134,20 @@ End_address_send:
             mov.w       #1, R10
             ;bis.b      #BIT2, P3OUT       ; set clock pin to high
             ;bis.b      #BIT0, P3OUT       ; set data pin to high
+            mov.w    #200, R5
+            cmp     #2003h, R4
+            jl wait3
+            mov.w   #2000h, R4
             jmp main
+wait3:
+            dec.w    R5
+            jnz wait3
+            jmp Send_time
+Send_time: 
+            mov.b   @R4+, R7
+            bic.b    #BIT0, P3OUT
+            mov.w    #100, R5
+            jmp wait2
 
 ;------------------------------------------------------------------------------
 ;           Interrupt Service routines
@@ -182,17 +200,6 @@ Send_Next_Bit:
             .short  ISR_Clock
 
 
-
-; switch 1 is pressed:
-; 1. SDA (P3.2) moves low
-; 2. wait 1/10,000 of a second
-; 3. begin clock operations (move data to send register)
-; 4. clock moves low (passive)
-; 5. send first bit of data (address)
-; 6. clock moves high, then low
-; 7. repeat steps 5-6 six more times
-
-
 ;------------------------------------------------------------------------------
 ;           Memory Allocation
 ;------------------------------------------------------------------------------
@@ -200,9 +207,9 @@ Send_Next_Bit:
             .data
             .retain
 ; initial time
-Seconds:        .short  0000000001011000b     ; 58 seconds
-Minutes:        .short  0000000000110010b     ; 32 minutes
-Hours:          .short  0000000000010010b     ; 12 Hours
+Seconds_Minutes:        .short  0011001001011000b     ; 58 seconds
+Hours:        .short  0000000000010010b     ; 32 minutes
+Blank:          .short  0000000000000000b     ; 12 Hours
 
 ; updated time
 cur_secs:       .space   2

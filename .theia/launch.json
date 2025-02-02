@@ -9,6 +9,15 @@
                 "name": "app",
                 "resourceId": "/app"
             }
+        },
+        {
+            "name": "Read_From_RTC",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "Read_From_RTC",
+                "resourceId": "/Read_From_RTC"
+            }
         }
     ]
 }
