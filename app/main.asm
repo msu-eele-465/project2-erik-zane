@@ -66,7 +66,7 @@ init:
 
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             
-            mov.b   #68, R6     ; address of Real Time Clock (I think)
+            mov.b   #136, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
             bis.b   #00000101b, P3OUT       ; set clock and data pins to high
@@ -88,7 +88,7 @@ start_address_send:
             mov.b    R6, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
-            rla.b    R7 ; BSL R7
+             ; rla.b    R7 ; BSL R7
             jmp wait2
 wait2:
             dec.w    R5
@@ -118,10 +118,10 @@ Send_0:
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
 End_address_send: 
-            cmp     #2004h, R4
-            jne Send_time
-            mov.w   #2000h, R4
-            mov.b    #2, R9
+            cmp.w     #2004h, R4
+            jnz       Send_time
+            mov.w     #2000h, R4
+            mov.b     #2, R9
             jmp wait3
 End_data_send:
             mov.w       #2, R11     ; stop send 
@@ -198,9 +198,9 @@ Send_Next_Bit:
             .data
             .retain
 ; initial time
-Register_Seconds:       .short  0101100000000000b     ; 58 seconds
-Minutes_Hours:          .short  0001001000110010b     ; 32 minutes
-Blank:                  .short  0000000000000000b     ; 12 Hours
+Register_Seconds:       .short  0101100000000000b     ; 58 seconds, register 0
+Minutes_Hours:          .short  0001001000110010b     ; 12 Hours, 32 minutes
+Blank:                  .short  0000000000000000b     
 
 ; updated time
 cur_secs:       .space   2
