@@ -72,7 +72,7 @@ init:
             bis.b   #00000101b, P3OUT       ; set clock and data pins to high
             mov.w   #2004h, R4              ; 
             mov.w   #0, R12  ; use this register to track which RTC register read
-; test Bit reads (zeroes)
+            ; test Bit reads (zeroes)
             mov.b   #2, cur_secs
             mov.b   #2, cur_mins
             mov.b   #2, cur_hours
@@ -93,7 +93,7 @@ wait:
 start_address_send:
             mov.b    R6, R7
             bic.b    #BIT0, P3OUT
-            mov.w    #100, R5
+            mov.w    #50, R5
             ;rla.b    R7 ; BSL R7
             jmp wait2
 wait2:
@@ -124,13 +124,14 @@ Send_0:
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
 End_address_send: 
+            bic.b   #00000001b, &P3OUT       ; keep output low
             cmp.w    #137, R6
             jge      start_read  ; start to read data if you just sent a read signal
             mov.w   #2005h, R13   ; base read register is 2004
             add.w   R12, R13   ; if you are reading seconds, R12 will be 0, minutes 1, hours 2, temp 3
             cmp.w   R13, R4    ; make sure you don't perform too many register address sends 
             jnz Send_time  ; if you have sent every byte you intended, return to first
-            mov.b    #2, R9
+            mov.b    #2, R9   
             cmp.w   #2008h, R4 ; increment slave address register unless it has reached 2007
             jge     reset_read ; otherwise, reset it to 2004 
             inc     R12
@@ -140,6 +141,8 @@ reset_read:
             mov.w   #0, R12 ; reset register counter to 0
             jmp wait3
 End_data:
+            xor.b   #00000001b, &P3OUT       ; in case of read finish, send nack to terminate signal from slave
+                                             ; in case of register send, do not send stop condition
             mov.w       #2, R11     ; stop send 
             mov.w       #1, R10
             xor.b       #00000001b, R6    ; read/write operations alternate
@@ -150,7 +153,7 @@ wait3:
             mov.b   #3, R11 ; reset negative clock-edge tracker
             dec.b R9        ; decrement the number of negative clock edges remaining
             jz End_data     ; stop waiting if you've waited for two negative clock edges
-            jmp wait3
+            jmp wait3 
 Send_time: 
             mov.b   @R4+, R7
             bic.b    #BIT0, P3OUT
@@ -162,11 +165,12 @@ Send_time:
 ;------------------------------------------------------------------------------
 start_read: 
             bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bis.b   #00000001b, &P3DIR       ; set P3.0 to input pulled low
+            bic.b   #00000001b, &P3DIR       ; set P3.0 to input pulled low
+            bis.b   #00000001b, &P3REN       ; enable resistors
             bic.b   #00000001b, &P3OUT       ; pull down resistor
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             mov.b   #3, R11           ; move #3 into R11
-            mov.b   #0, R8            ; set R8 to 00000000
+            mov.b   #0, R8            ; set R8 to 00000000b
             mov.w   #9, R9
 
 read_next_bit:
@@ -174,8 +178,8 @@ read_next_bit:
             jl  read_next_bit
             dec.b R9            ; Reduce Counter
             jz End_data_read
-            bit.b   #00000001b, &P4IN
             rla.b   R8
+            bit.b   #00000001b, &P3IN
             jnz     read_1
             jz      read_0
 
@@ -191,10 +195,11 @@ read_0:
 
 End_data_read:
             bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bic.b   #00000001b, &P3DIR       ; set P3.0 to output
-            bis.b   #00000001b, &P3REN       ; enable resistors
-            bic.b   #00000001b, &P3OUT       ; keep output low
+            bis.b   #00000001b, &P3DIR       ; set P3.0 to output
+            bic.b   #00000001b, &P3REN       ; disable resistors
+            bis.b   #00000001b, &P3OUT       ; send NACK
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
+
             mov.w   R4, R14
             add.w   #4, R14    
             mov.b   R8, 0(R14)  ; store read data to appropriate location in memory

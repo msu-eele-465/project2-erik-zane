@@ -118,6 +118,7 @@ Send_0:
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
 End_address_send: 
+            bic.b   #00000001b, &P3OUT       ; keep output low
             cmp.w     #2004h, R4
             jnz       Send_time
             mov.w     #2000h, R4
@@ -199,7 +200,7 @@ Send_Next_Bit:
             .retain
 ; initial time
 Register_Seconds:       .short  0101100000000000b     ; 58 seconds, register 0
-Minutes_Hours:          .short  0001001000110010b     ; 12 Hours, 32 minutes
+Minutes_Hours:          .short  0001001000110011b     ; 12 Hours, 33 minutes
 Blank:                  .short  0000000000000000b     
 
 ; updated time
