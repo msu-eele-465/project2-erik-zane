@@ -59,10 +59,7 @@ init:
 
 main:
             NOP
-            ;jl main
-            ;jge Send_data
-            ;NOP
-            mov.w    #200, R5
+            mov.w    #200, R5 ; small interval between each read operation
             jmp wait
 wait:
             dec.w    R5
@@ -71,8 +68,7 @@ wait:
 start_address_send:
             mov.b    R6, R7
             bic.b    #BIT0, P3OUT
-            mov.w    #50, R5
-            ;rla.b    R7 ; BSL R7
+            mov.w    #50, R5 ; wait after start condition
             jmp wait2
 wait2:
             dec.w    R5
@@ -116,13 +112,13 @@ End_send:
             mov.w   #2005h, R13   ; base read register is 2004
             add.w   R12, R13   ; if you are reading seconds, R12 will be 0, minutes 1, hours 2, temp 3
             cmp.w   R13, R4    ; make sure you don't perform too many register address sends 
-            jnz     Send_time  ; if you have sent every byte you intended, return to first
+            jnz     Send_sl_mem_addr  ; if you have sent every byte you intended, return to first
             mov.b    #2, R9   
             cmp.w   #2008h, R4 ; increment slave address register unless it has reached 2007
-            jge     reset_read ; otherwise, reset it to 2004 
+            jge     reset_read_addr ; otherwise, reset it to 2004 
             inc     R12
             jmp wait3
-reset_read: 
+reset_read_addr: 
             mov.w   #2004h, R4 ; reset send register to 2004 
             mov.w   #0, R12 ; reset register counter to 0
             jmp wait3
@@ -130,7 +126,7 @@ reset_read:
 End_data:
 
             bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bis.b   #00000001b, &P3DIR       ; set P3.0 to output
+            bis.b   #00000001b, &P3DIR       ; set P3.0 to output (will already be 1/0 to send restart/stop)
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pi
 
             mov.w       #2, R11     ; stop send 
@@ -144,7 +140,7 @@ wait3:
             dec.b R9        ; decrement the number of negative clock edges remaining
             jz End_data    ; stop waiting if you've waited for two negative clock edges
             jmp wait3 
-Send_time: 
+Send_sl_mem_addr: 
             mov.b   @R4+, R7
             jmp Send_data_start
 
@@ -218,7 +214,7 @@ ISR_Clock:
             jge         Switch_Clock    ; if yes, then jump to switch_clock
             cmp.b       #1, R10
             jge         End_send_clock
-        ; also check if value is less than 2-- this will symbolize some type of send operation
+
 Clear_Clock_Flag:
             bic.w       #CCIFG, &TB1CCTL0  ; clear interrupt flag
             reti                       ; return 
