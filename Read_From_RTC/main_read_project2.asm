@@ -148,10 +148,6 @@ Send_sl_mem_addr:
 ;           Read data
 ;------------------------------------------------------------------------------
 start_read: 
-            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bic.b   #00000001b, &P3DIR       ; set P3.0 to input
-            bis.b   #00000001b, &P3OUT       ; pull up resistor
-            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             mov.b   #3, R11           ; move #3 into R11
             mov.b   #0, R8            ; set R8 to 00000000b
             mov.w   #9, R9
