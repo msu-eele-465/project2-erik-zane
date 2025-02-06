@@ -15,23 +15,6 @@
 
 RESET       mov.w   #__STACK_END,SP         ; Initialize stack pointer
 StopWDT     mov.w   #WDTPW+WDTHOLD,&WDTCTL  ; Stop WDT
-; 1 = read, 0 = write
-; code for later, as we will likely need to switch our pins between input and output:
-; (port and pin numbers are placeholders pins not typically enabled for I2C module use)
-; setting pins as output:
-; bis.w   #LOCKLPM5,&PM5CTL0 
-; bis.b   #00001100b, &P3DIR  ; choose 3.3 as clock and 3.2 as data
-; bis.b   #00001100b, &P3OUT  (passively high)
-; bic.w   #LOCKLPM5,&PM5CTL0 
-
-;setting pins as input:
-; bis.w   #LOCKLPM5,&PM5CTL0 
-; bic.b   #00001100b, &P3DIR
-; bis.b   #00001100b, &P3REN
-; bic.b   #00001100b, &P3OUT  (pull down resistors, for now)
-; bic.w   #LOCKLPM5,&PM5CTL0 
-
-
 
 init_heartbeat:
             bic.b   #BIT0,&P1OUT            ; Clear P1.0 output
@@ -129,7 +112,11 @@ Send_0:
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
 End_address_send: 
-            bic.b   #00000001b, &P3OUT       ; keep output low
+            ; recieve ACK
+            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            bic.b   #00000001b, &P3DIR       ; set P3.0 to input
+            bis.b   #00000001b, &P3OUT       ; pull up resistor
+            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             cmp.w    #209, R6
             jge      start_read  ; start to read data if you just sent a read signal
             mov.w   #2005h, R13   ; base read register is 2004
@@ -140,28 +127,11 @@ End_address_send:
             cmp.w   #2008h, R4 ; increment slave address register unless it has reached 2007
             jge     reset_read ; otherwise, reset it to 2004 
             inc     R12
-            ; recieve ACK
-            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bic.b   #00000001b, &P3DIR       ; set P3.0 to input pulled low
-            bis.b   #00000001b, &P3OUT       ; pull up resistor
-            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             jmp wait3
 reset_read: 
             mov.w   #2004h, R4 ; reset send register to 2004 
             mov.w   #0, R12 ; reset register counter to 0
-            ; recieve ACK
-            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bic.b   #00000001b, &P3DIR       ; set P3.0 to input
-            bis.b   #00000001b, &P3OUT       ; pull up resistor
-            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             jmp wait3
-
-Send_restart:
-            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bis.b   #00000001b, &P3DIR       ; set P3.0 to output
-            bic.b   #00000001b, &P3OUT       ; set low so xor sets it high
-            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
-            jmp     End_data
 
 End_data:
 
@@ -184,10 +154,10 @@ wait3:
             jmp wait3 
 Send_time: 
             mov.b   @R4+, R7
-            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            bic.b   #00000001b, &P3DIR       ; set P3.0 to input
-            bis.b   #00000001b, &P3OUT       ; pull up resistor
-            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
+            ;bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            ;bic.b   #00000001b, &P3DIR       ; set P3.0 to input
+            ;bis.b   #00000001b, &P3OUT       ; pull up resistor
+            ;bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             ; bic.b    #BIT0, P3OUT
             jmp Send_data_start
 
