@@ -66,7 +66,7 @@ init:
 
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             
-            mov.b   #136, R6     ; address of Real Time Clock (I think)
+            mov.b   #208, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
             bis.b   #00000101b, P3OUT       ; set clock and data pins to high
