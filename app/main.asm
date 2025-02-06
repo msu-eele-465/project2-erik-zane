@@ -14,19 +14,6 @@
 RESET       		mov.w   #__STACK_END,SP         ; Initialize stack pointer
 StopWDT     		mov.w   #WDTPW|WDTHOLD,&WDTCTL  ; Stop WDT
 ;-------------------------------------------------------------------------------
-;	R4 - delay subroutine reserved
-;	R5 - delay subroutine reserved
-;	R6 - delay subroutine reserved
-;	R7 - loop counter
-;	R8 - transmit byte
-;	R9 - transmit byte
-;	R10 - receive byte
-;	R11
-;	R12 - Represents the state of the last acknowledgment received via I2C. 00h == ACK. 01h == NACK.
-;	R13 - Contains seconds value from memory
-;	R14 - Contains minutes value from memory
-;	R15 - Contains hours value from memory
-;-------------------------------------------------------------------------------
 init:
 					bis.b	#BIT2, &P3DIR			; set P3.2 as out for SCL
 					bic.b	#BIT2, &P3OUT			; set init val to 0
