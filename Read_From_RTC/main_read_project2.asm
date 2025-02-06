@@ -46,21 +46,15 @@ init:
             ; Select I2C pins 
             bis.b   #00000101b, &P3DIR  ; choose 3.2 as clock and 3.3 as data, outputs as default
             bis.b   #00000101b, &P3OUT  ; (passively high)
+            bis.b   #00000001b, &P3REN       ; enable resistors on data
 
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             
             mov.b   #208, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
-            bis.b   #00000101b, P3OUT       ; set clock and data pins to high
-            bis.b   #00000001b, &P3REN       ; enable resistors on data
             mov.w   #2004h, R4              ; 
             mov.w   #0, R12  ; use this register to track which RTC register read
-            ; test Bit reads (zeroes)
-            mov.b   #2, cur_secs
-            mov.b   #2, cur_mins
-            mov.b   #2, cur_hours
-            mov.b   #2, temp
             NOP
 
 main:
@@ -96,7 +90,7 @@ Send_data:
             cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
             jl  Send_data 
             dec.b R9            ; Reduce Counter
-            jz End_address_send   ; if counter has reached 0, clear flag (for now)
+            jz End_send   ; if counter has reached 0, clear flag (for now)
             rla.b    R7
             jc  Send_1
             jnc Send_0
@@ -111,7 +105,7 @@ Send_0:
            bic.b        #BIT0, P3OUT  
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
-End_address_send: 
+End_send: 
             ; recieve ACK
             bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
             bic.b   #00000001b, &P3DIR       ; set P3.0 to input
@@ -139,8 +133,6 @@ End_data:
             bis.b   #00000001b, &P3DIR       ; set P3.0 to output
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pi
 
-            ;xor.b   #00000001b, &P3OUT       ; in case of read finish, send nack to terminate signal from slave
-                                             ; in case of register send, do not send stop condition
             mov.w       #2, R11     ; stop send 
             mov.w       #1, R10
             xor.b       #00000001b, R6    ; read/write operations alternate
@@ -154,11 +146,6 @@ wait3:
             jmp wait3 
 Send_time: 
             mov.b   @R4+, R7
-            ;bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
-            ;bic.b   #00000001b, &P3DIR       ; set P3.0 to input
-            ;bis.b   #00000001b, &P3OUT       ; pull up resistor
-            ;bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
-            ; bic.b    #BIT0, P3OUT
             jmp Send_data_start
 
 ;------------------------------------------------------------------------------
@@ -273,8 +260,8 @@ Send_Next_Bit:
             .data
             .retain
 ; initial time
-Register_Seconds:        .short  0101100000000000b     ; 58 seconds
-Minutes_Hours:           .short  0001001000110010b     ; 32 minutes
+Register_Seconds:        .short  0101100000000000b     ; 58 seconds, register 0
+Minutes_Hours:           .short  0001001000110010b     ; 12 hours, 32 minutes
 Read_Registers1:         .short  0000000100000000b     ; Register 1, Register 0
 Read_Registers2:         .short  0001000100000010b     ; Register 11, Register 2
 
