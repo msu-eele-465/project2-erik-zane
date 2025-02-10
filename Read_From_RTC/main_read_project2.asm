@@ -15,23 +15,6 @@
 
 RESET       mov.w   #__STACK_END,SP         ; Initialize stack pointer
 StopWDT     mov.w   #WDTPW+WDTHOLD,&WDTCTL  ; Stop WDT
-; 1 = read, 0 = write
-; code for later, as we will likely need to switch our pins between input and output:
-; (port and pin numbers are placeholders pins not typically enabled for I2C module use)
-; setting pins as output:
-; bis.w   #LOCKLPM5,&PM5CTL0 
-; bis.b   #00001100b, &P3DIR  ; choose 3.3 as clock and 3.2 as data
-; bis.b   #00001100b, &P3OUT  (passively high)
-; bic.w   #LOCKLPM5,&PM5CTL0 
-
-;setting pins as input:
-; bis.w   #LOCKLPM5,&PM5CTL0 
-; bic.b   #00001100b, &P3DIR
-; bis.b   #00001100b, &P3REN
-; bic.b   #00001100b, &P3OUT  (pull down resistors, for now)
-; bic.w   #LOCKLPM5,&PM5CTL0 
-
-
 
 init_heartbeat:
             bic.b   #BIT0,&P1OUT            ; Clear P1.0 output
@@ -63,53 +46,47 @@ init:
             ; Select I2C pins 
             bis.b   #00000101b, &P3DIR  ; choose 3.2 as clock and 3.3 as data, outputs as default
             bis.b   #00000101b, &P3OUT  ; (passively high)
+            bis.b   #00000001b, &P3REN       ; enable resistors on data
 
             bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
             
-            mov.b   #68, R6     ; address of Real Time Clock (I think)
+            mov.b   #208, R6     ; address of Real Time Clock (I think)
             mov.b   #2, R11     ; default value of status register
             mov.b   #0, R10     ; set perform_send operation to 0
-            bis.b   #00000101b, P3OUT       ; set clock and data pins to high
+            mov.w   #2004h, R4              ; 
+            mov.w   #0, R12  ; use this register to track which RTC register read
             NOP
 
 main:
             NOP
-            ;jl main
-            ;jge Send_data
-            ;NOP
-            mov.w    #200, R5
+            mov.w    #200, R5 ; small interval between each read operation
+            jmp wait
 wait:
             dec.w    R5
-            jnz wait           
-start:
+            jnz wait 
+            jmp start_address_send         
+start_address_send:
+            mov.b    R6, R7
             bic.b    #BIT0, P3OUT
-            mov.w    #100, R5
+            mov.w    #50, R5 ; wait after start condition
+            jmp wait2
 wait2:
             dec.w    R5
             jnz wait2
+            jmp Send_data_start
 Send_data_start:
-            mov.b    R6, R7
             mov.b    #3, R11
-            mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
-            rla.b    R7 ; BSL R7
-            jmp Send_data
-            
-stop:
-            
-tx_ack:
-rx_ack:
-tx_byte:
-rx_byte:
-sda_delay:
-scl_delay:
-send_address:
-write:
-read:     
+            mov.b    #9, R9     ; send 8 bits of data (number should be 8 for this)
+            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            bis.b   #00000001b, &P3DIR       ; set P3.0 to output
+            bic.b   #00000001b, &P3OUT       ; keep output low
+            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
+            jmp Send_data 
 Send_data:
             cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
             jl  Send_data 
             dec.b R9            ; Reduce Counter
-            jz End_address_send   ; if counter has reached 0, clear flag (for now)
+            jz End_send   ; if counter has reached 0, clear flag (for now)
             rla.b    R7
             jc  Send_1
             jnc Send_0
@@ -124,12 +101,99 @@ Send_0:
            bic.b        #BIT0, P3OUT  
            mov.b        #3, R11      ; wait to send next bit
            jmp          Send_data
-End_address_send: 
-            mov.w       #2, R11     ; default value of send-data status register (we will not ever send a larger number than 68)
+End_send: 
+            ; recieve ACK
+            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            bic.b   #00000001b, &P3DIR       ; set P3.0 to input
+            bis.b   #00000001b, &P3OUT       ; pull up resistor
+            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
+            cmp.w    #209, R6
+            jge      start_read  ; start to read data if you just sent a read signal
+            mov.w   #2005h, R13   ; base read register is 2004
+            add.w   R12, R13   ; if you are reading seconds, R12 will be 0, minutes 1, hours 2, temp 3
+            cmp.w   R13, R4    ; make sure you don't perform too many register address sends 
+            jnz     Send_sl_mem_addr  ; if you have sent every byte you intended, return to first
+            mov.b    #2, R9   
+            cmp.w   #2008h, R4 ; increment slave address register unless it has reached 2007
+            jge     reset_read_addr ; otherwise, reset it to 2004 
+            inc     R12
+            jmp wait3
+reset_read_addr: 
+            mov.w   #2004h, R4 ; reset send register to 2004 
+            mov.w   #0, R12 ; reset register counter to 0
+            jmp wait3
+
+End_data:
+
+            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            bis.b   #00000001b, &P3DIR       ; set P3.0 to output (will already be 1/0 to send restart/stop)
+            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pi
+
+            mov.w       #2, R11     ; stop send 
             mov.w       #1, R10
-            ;bis.b      #BIT2, P3OUT       ; set clock pin to high
-            ;bis.b      #BIT0, P3OUT       ; set data pin to high
+            xor.b       #00000001b, R6    ; read/write operations alternate
             jmp main
+wait3:
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
+            jl  wait3       ; wait until negative clock edge to move past wait3
+            mov.b   #3, R11 ; reset negative clock-edge tracker
+            dec.b R9        ; decrement the number of negative clock edges remaining
+            jz End_data    ; stop waiting if you've waited for two negative clock edges
+            jmp wait3 
+Send_sl_mem_addr: 
+            mov.b   @R4+, R7
+            jmp Send_data_start
+
+;------------------------------------------------------------------------------
+;           Read data
+;------------------------------------------------------------------------------
+start_read: 
+            mov.b   #3, R11           ; move #3 into R11
+            mov.b   #0, R8            ; set R8 to 00000000b
+            mov.w   #9, R9
+
+read_next_bit:
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
+            jl  read_next_bit
+            dec.b R9            ; Reduce Counter
+            jz End_data_read
+            rla.b   R8
+            bit.b   #00000001b, &P3IN
+            jnz     read_1
+            jz      read_0
+
+read_1:
+            bis.b   #BIT0, R8
+            mov.b        #3, R11      ; wait to send next bit
+            jmp read_next_bit
+
+read_0:
+            bic.b   #BIT0, R8
+            mov.b        #3, R11      ; wait to send next bit
+            jmp read_next_bit
+
+End_data_read:
+            bis.w   #LOCKLPM5,&PM5CTL0       ; lock I/O pins
+            bis.b   #00000001b, &P3DIR       ; set P3.0 to output
+            bis.b   #00000001b, &P3OUT       ; send NACK
+            bic.w   #LOCKLPM5,&PM5CTL0       ; Unlock I/O pins
+
+            mov.w   R4, R14
+            add.w   #4, R14    
+            mov.b   R8, 0(R14)  ; store read data to appropriate location in memory
+            mov.b   #2, R9
+            jmp wait4 ; default at end of this operation
+
+wait4:
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
+            jl  wait4       ; wait until negative clock edge to move past wait3
+            mov.b   #3, R11 ; reset negative clock-edge tracker
+            dec.b R9        ; decrement the number of negative clock edges remaining
+            jz End_read    ; stop waiting if you've waited for two negative clock edges
+            jmp wait4 
+End_read: 
+            bic.b   #00000001b, &P3OUT       ; send STOP
+            jmp End_data
 
 ;------------------------------------------------------------------------------
 ;           Interrupt Service routines
@@ -144,10 +208,9 @@ ISR_HeartBeat:
 ISR_Clock: 
             cmp.b       #3, R11  ; is data being sent (is send status register (R11) empty (value greater than or equal to ~1))
             jge         Switch_Clock    ; if yes, then jump to switch_clock
-            ;bis.b      #BIT2, P3OUT   ; set clock high as default
             cmp.b       #1, R10
             jge         End_send_clock
-        ; also check if value is less than 2-- this will symbolize some type of send operation
+
 Clear_Clock_Flag:
             bic.w       #CCIFG, &TB1CCTL0  ; clear interrupt flag
             reti                       ; return 
@@ -182,7 +245,6 @@ Send_Next_Bit:
             .short  ISR_Clock
 
 
-
 ;------------------------------------------------------------------------------
 ;           Memory Allocation
 ;------------------------------------------------------------------------------
@@ -190,12 +252,13 @@ Send_Next_Bit:
             .data
             .retain
 ; initial time
-Seconds_Minutes:        .short  0011001001011000b     ; 58 seconds
-Hours:        .short  0000000000010010b     ; 32 minutes
-Blank:          .short  0000000000000000b     ; 12 Hours
+Register_Seconds:        .short  0101100000000000b     ; 58 seconds, register 0
+Minutes_Hours:           .short  0001001000110010b     ; 12 hours, 32 minutes
+Read_Registers1:         .short  0000000100000000b     ; Register 1, Register 0
+Read_Registers2:         .short  0001000100000010b     ; Register 11, Register 2
 
 ; updated time
-cur_secs:       .space   2
-cur_mins:       .space   2
-cur_hours:      .space   2
-temp:           .space   2
+temp:       .space   1   ; 2008h 
+cur_secs:       .space   1   ; 2009h
+cur_mins:      .space   1   ; 200Ah
+cur_hours:           .space   1   ; 200Bh  (probably)
