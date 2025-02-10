@@ -46,7 +46,7 @@ init_heartbeat:
             bis.w   #CCIE, &TB0CCTL0        ; enable interrput on TB0CCTL0
             bic.w   #CCIFG, &TB0CCTL0       ; clear interrupt flag
 
-init:
+i_init:
 
             bis.w   #TBCLR, &TB1CTL         ; clock_clock on control register TB1CTL
             bis.w   #TBSSEL__SMCLK, &TB1CTL  ; choose SMCLK
@@ -75,71 +75,67 @@ init:
 
 main:
             NOP
-            ;jl main
-            ;jge Send_data
-            ;NOP
             mov.w    #200, R5
-            jmp wait
-wait:
+            jmp i_wait
+i_wait:
             dec.w    R5
-            jnz wait 
-            jmp start_address_send         
-start_address_send:
+            jnz i_wait 
+            jmp i_start_address_send         
+i_start_address_send:
             mov.b    R6, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
-             ; rla.b    R7 ; BSL R7
-            jmp wait2
-wait2:
+            jmp i_wait2
+i_wait2:
             dec.w    R5
-            jnz wait2
-            jmp Send_data_start
-Send_data_start:
+            jnz i_wait2
+            jmp i_Send_data_start
+i_Send_data_start:
             mov.b    #3, R11
             mov.b    #9, R9     ; send 7 bits of data (number should be 8 for this)
-            jmp Send_data 
-Send_data:
-            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
-            jl  Send_data 
+            jmp i_Send_data 
+i_Send_data:
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to i_Send_data
+            jl  i_Send_data 
             dec.b R9            ; Reduce Counter
-            jz End_address_send   ; if counter has reached 0, clear flag (for now)
+            jz i_end_address_send   ; if counter has reached 0, clear flag (for now)
             rla.b    R7
-            jc  Send_1
-            jnc Send_0
+            jc  i_Send_1
+            jnc i_Send_0
             ; otherwise, BSL and change pin (3.3) value to shifted-out bit
             ; decrement bit-send counter (R9)
-            ; jnz send_data
-Send_1:
+            ; jnz i_Send_data
+i_Send_1:
            bis.b        #BIT0, P3OUT 
-           mov.b        #3, R11      ; wait to send next bit
-           jmp          Send_data
-Send_0:
+           mov.b        #3, R11      ; i_wait to send next bit
+           jmp          i_Send_data
+i_Send_0:
            bic.b        #BIT0, P3OUT  
-           mov.b        #3, R11      ; wait to send next bit
-           jmp          Send_data
-End_address_send: 
+           mov.b        #3, R11      ; i_wait to send next bit
+           jmp          i_Send_data
+i_end_address_send: 
             bic.b   #00000001b, &P3OUT       ; keep output low
             cmp.w     #2004h, R4
-            jnz       Send_time
+            jnz       i_send_time
             mov.w     #2000h, R4
             mov.b     #2, R9
-            jmp wait3
-End_data_send:
+            jmp i_wait3
+i_end_data_send:
             mov.w       #2, R11     ; stop send 
             mov.w       #1, R10
-            jmp main
-wait3:
-            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to Send_data
-            jl  wait3 
+            jmp main                ; after this, jump to regular main method
+i_wait3:
+            cmp.w    #4, R11       ; is "send next bit" bit toggled to 1 (r11 =4)?, if no, jump to i_wait3
+            jl  i_wait3 
             mov.b   #3, R11
             dec.b R9
-            jz End_data_send
-            jmp wait3
-Send_time: 
+            jz i_end_data_send
+            jmp i_wait3
+i_send_time: 
             mov.b   @R4+, R7
             bic.b    #BIT0, P3OUT
             mov.w    #100, R5
-            jmp Send_data_start
+            jmp i_Send_data_start
 
 ;------------------------------------------------------------------------------
 ;           Interrupt Service routines
