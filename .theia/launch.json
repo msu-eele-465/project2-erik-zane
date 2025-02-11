@@ -18,6 +18,15 @@
                 "name": "Read_From_RTC",
                 "resourceId": "/Read_From_RTC"
             }
+        },
+        {
+            "name": "Complete_Process.asm",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "Complete_Process.asm",
+                "resourceId": "/Complete_Process.asm"
+            }
         }
     ]
 }
